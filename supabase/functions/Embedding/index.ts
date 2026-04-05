@@ -9,7 +9,8 @@ const corsHeaders = {
 }
 
 const KNOWLEDGE_PATH = '/internal/suzu-knowledge'
-const EMBEDDING_MODEL = 'text-embedding-004'
+const EMBEDDING_MODEL = 'gemini-embedding-001'
+const EMBEDDING_DIMENSIONS = 768
 
 async function getGoogleEmbedding(input: string) {
   const googleApiKey =
@@ -27,9 +28,11 @@ async function getGoogleEmbedding(input: string) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        model: `models/${EMBEDDING_MODEL}`,
         content: {
           parts: [{ text: input }],
         },
+        outputDimensionality: EMBEDDING_DIMENSIONS,
       }),
     }
   )

@@ -110,7 +110,7 @@ supabase secrets set --env-file ./supabase/functions/.env.secrets
 Or set directly:
 
 ```bash
-supabase secrets set EDGE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co EDGE_SERVICE_ROLE_KEY=sb_secret_xxx
+supabase secrets set EDGE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co EDGE_SERVICE_ROLE_KEY=your_service_role_key_here
 ```
 
 ### 4.5 Deploy edge function

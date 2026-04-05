@@ -1,6 +1,5 @@
 import { google } from '@ai-sdk/google';
 import { convertToModelMessages, streamText, type UIMessage } from 'ai';
-import { getLocalEmbedding } from '../../../lib/local-embed';
 import { createClient } from '@supabase/supabase-js';
 
 function getMessageText(message?: UIMessage) {
@@ -14,12 +13,44 @@ function getMessageText(message?: UIMessage) {
     .join('');
 }
 
+async function getEmbeddingFromSupabase(input: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing Supabase environment variables for embedding function call.');
+  }
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/Embedding`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${serviceRoleKey}`,
+      apikey: serviceRoleKey,
+    },
+    body: JSON.stringify({ input }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Embedding function failed: ${response.status} ${text}`);
+  }
+
+  const payload = (await response.json()) as { embedding?: number[] };
+
+  if (!Array.isArray(payload.embedding) || payload.embedding.length === 0) {
+    throw new Error('Embedding function returned invalid embedding payload.');
+  }
+
+  return payload.embedding;
+}
+
 export async function POST(req: Request) {
   try {
     const { messages } = (await req.json()) as { messages: UIMessage[] };
     const lastMessage = getMessageText(messages[messages.length - 1]);
 
-    const embedding = await getLocalEmbedding(lastMessage);
+    const embedding = await getEmbeddingFromSupabase(lastMessage);
     // 2. Tìm kiếm trong Supabase
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,7 +58,7 @@ export async function POST(req: Request) {
     );
 
     const { data: contextSections } = await supabase.rpc('match_page_sections', {
-      embedding: embedding,
+      query_embedding: embedding,
       match_threshold: 0.3,
       match_count: 5,
     });

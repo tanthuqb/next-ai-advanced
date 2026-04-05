@@ -19,13 +19,14 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "npm run embeddings && next build",
+    "build": "next build",
+    "build:with-embeddings": "npm run embeddings && next build",
     "start": "next start",
     "lint": "eslint .",
     "format": "prettier --write \"./**/*.{js,jsx,ts,tsx,css,md,json}\"",
     "embeddings": "tsx lib/generate-embeddings.ts",
     "embeddings:refresh": "tsx lib/generate-embeddings.ts --refresh",
-    "functions": "supabase functions serve Embedding --no-verify-jwt --env-file ./supabase/functions/.env"
+    "functions": "supabase functions serve Embedding --no-verify-jwt --env-file ./supabase/functions/.env.secrets"
   },
   "prettier": {
     "trailingComma": "es5",

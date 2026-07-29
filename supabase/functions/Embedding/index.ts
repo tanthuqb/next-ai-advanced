@@ -75,11 +75,11 @@ serve(async (req) => {
     if (isIngest) {
       const supabaseUrl = Deno.env.get('EDGE_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL')
       const serviceRoleKey =
-        Deno.env.get('EDGE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+        Deno.env.get('EDGE_SERVICE_ROLE_KEY') ?? Deno.env.get('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')
 
       if (!supabaseUrl || !serviceRoleKey) {
         throw new Error(
-          'Missing EDGE_SUPABASE_URL/EDGE_SERVICE_ROLE_KEY (or default SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY) in function secrets'
+          'Missing EDGE_SUPABASE_URL/EDGE_SERVICE_ROLE_KEY (or default SUPABASE_URL/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) in function secrets'
         )
       }
 

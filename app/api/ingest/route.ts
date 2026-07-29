@@ -1,76 +1,52 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { pipeline } from '@xenova/transformers'
 
-let extractor: any = null;
-
+// Ingest goes through the `Embedding` Edge Function with isIngest: true so
+// knowledge is embedded with the SAME model the chat route uses for queries
+// (gemini-embedding-001). Embedding ingest with a different model (the old
+// local MPNet pipeline) produced vectors in a different embedding space,
+// making similarity search useless.
 export async function POST(req: Request) {
     try {
         const { content } = await req.json()
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-            process.env.SUPABASE_SERVICE_ROLE_KEY! 
-        )
 
-        // 1. Initialize MPNet (768 dims)
-        if (!extractor) {
-            extractor = await pipeline('feature-extraction', 'Xenova/all-mpnet-base-v2');
+        if (!content || typeof content !== 'string' || content.trim().length === 0) {
+            return NextResponse.json({ error: 'content must be a non-empty string' }, { status: 400 })
         }
 
-        // 2. Resolve the page ID based on the 'path' column (the schema declares path NOT NULL UNIQUE)
-        const targetPath = '/internal/suzu-knowledge';
-        let pageId: number;
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
-        const { data: existingPage } = await supabase
-            .from('nods_page')
-            .select('id')
-            .eq('path', targetPath)
-            .single();
-
-        if (existingPage) {
-            pageId = existingPage.id;
-        } else {
-            // If it does not exist yet, create it with the schema columns: path, type, source
-            const { data: newPage, error: pageError } = await supabase
-                .from('nods_page')
-                .insert({ 
-                    path: targetPath, 
-                    type: 'knowledge-base',
-                    source: 'admin-upload'
-                })
-                .select('id')
-                .single();
-            
-            if (pageError) throw new Error("Failed to create nods_page: " + pageError.message);
-            pageId = newPage.id;
+        if (!supabaseUrl || !publishableKey) {
+            throw new Error('Missing Supabase environment variables for embedding function call.')
         }
 
-        // 3. Split into chunks and generate embeddings
+        // Split into chunks; the Edge Function stores one nods_page_section per call.
         const chunks = content.split('\n').filter((c: string) => c.trim().length > 0)
-        
-        for (const chunk of chunks) {
-            const output = await extractor(chunk, { pooling: 'mean', normalize: true });
-            const embedding = Array.from(output.data);
 
-            // 4. Insert into nods_page_section (columns: page_id, content, embedding, slug)
-            const { error: insertError } = await supabase.from('nods_page_section').insert({
-                page_id: pageId, // Bigint
-                content: chunk,
-                embedding: embedding, // 768 dims
-                slug: `section-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`
+        let ingested = 0
+        for (const chunk of chunks) {
+            const response = await fetch(`${supabaseUrl}/functions/v1/Embedding`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${publishableKey}`,
+                    apikey: publishableKey,
+                },
+                body: JSON.stringify({ input: chunk, isIngest: true }),
             })
 
-            if (insertError) {
-                console.error('Failed to insert section:', insertError);
-                throw insertError;
+            if (!response.ok) {
+                const text = await response.text()
+                throw new Error(`Embedding function failed on chunk ${ingested + 1}/${chunks.length}: ${response.status} ${text}`)
             }
+
+            ingested++
         }
 
-        return NextResponse.json({ 
-            success: true, 
-            message: `Suzu has finished ingesting knowledge into path: ${targetPath}`
+        return NextResponse.json({
+            success: true,
+            message: `Suzu has finished ingesting ${ingested} knowledge chunk(s).`,
         })
-
     } catch (error: any) {
         console.error('Ingest Error:', error)
         return NextResponse.json({ error: error.message }, { status: 500 })

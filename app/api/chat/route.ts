@@ -15,7 +15,7 @@ function getMessageText(message?: UIMessage) {
 
 async function getEmbeddingFromSupabase(input: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceRoleKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('Missing Supabase environment variables for embedding function call.');
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     // 2. Search in Supabase
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
     );
 
     const { data: contextSections } = await supabase.rpc('match_page_sections', {
@@ -65,31 +65,80 @@ export async function POST(req: Request) {
 
     const contextText = contextSections?.map((s: any) => s.content).join('\n\n') || "";
 
+    // Citations sent to the client as message metadata (rendered as "View sources").
+    // Only cite sources the answer is genuinely grounded in. Weakly-related
+    // matches (kept in contextText for the model) would over-claim as citations.
+    const CITATION_THRESHOLD = 0.7;
+    const seenKeys = new Set<string>();
+    const sources = (contextSections ?? [])
+      .filter((s: any) => s.similarity >= CITATION_THRESHOLD)
+      .map((s: any) => {
+        const content: string = typeof s.content === 'string' ? s.content : '';
+        // Stored headings are generic ("Edge ingest"), so derive a title from the chunk itself.
+        const hasRealHeading = s.heading && s.heading !== 'Edge ingest';
+        const title: string = hasRealHeading
+          ? s.heading
+          : content.split(/[.:\n]/)[0].trim().slice(0, 60) || s.slug || `Section ${s.id}`;
+        return {
+          id: s.id,
+          title,
+          similarity: s.similarity,
+          // Omit the snippet when it would just repeat the title.
+          snippet: content.length > title.length + 20
+            ? (content.length > 180 ? content.slice(0, 180) + '…' : content)
+            : '',
+          _dedupeKey: (content || title).trim().toLowerCase(),
+        };
+      })
+      // Duplicate chunks (same doc ingested twice) collapse into one entry;
+      // results are sorted by similarity, so the best match wins.
+      .filter((s: { _dedupeKey: string; title: string }) => {
+        const keys = [s._dedupeKey, s.title.toLowerCase()];
+        if (keys.some((k) => seenKeys.has(k))) return false;
+        keys.forEach((k) => seenKeys.add(k));
+        return true;
+      })
+      .map(({ _dedupeKey, ...s }: { _dedupeKey: string; [k: string]: any }) => s);
+
 
     const result = await streamText({
-      model: google('gemini-2.0-flash'),
+      model: google('gemini-3.6-flash'),
       system: `
-        IDENTITY: You are Suzu - a hands-on career advisor who is enthusiastic and gets straight to the point.
+        IDENTITY: You are Suzu - a hands-on career advisor who is enthusiastic, warm, and gets straight to the point.
 
         YOUR DATA SOURCE (RAG):
         """
         ${contextText}
         """
 
-        RESPONSE RULES (MANDATORY):
-        1. Keep the greeting extremely short.
-        2. Immediately ask 3-4 sharp questions to deeply understand the user's needs (e.g. what their challenges are, what their goals are, what their budget/timeline looks like).
-        3. Provide a preliminary plan of 3-4 concrete STEPS to solve the problem they just described.
-        4. Remind the user: "If you agree with this plan, we will dive into the details of each step!".
-        5. Do NOT write long-winded answers. Use Markdown (bold, bullet points) for a professional presentation.
+        CONVERSATION PHASES (MANDATORY):
 
-        NOTE: If the data (RAG) above contains no relevant information, use your own career expertise to answer, but ALWAYS KEEP the 3-4 STEP process.
+        1. GREETING (first exchange only, when the user has just said hi or opened the chat):
+           - Introduce yourself in 2-3 sentences max. If the RAG context clearly states which company you represent, mention it in ONE short phrase - but never guess: job boards, hiring channels, or partners mentioned in the context are NOT your company. When unsure, introduce yourself simply as a career advisor.
+           - Ask exactly ONE question to understand the user's goal.
+           - Do NOT provide any plan, step list, or detailed company info yet.
+
+        2. ADVISING (after the user has shared their goal or asked a concrete question):
+           - Ground answers in the RAG context above when relevant; otherwise use your own career expertise.
+           - Give specific, personalized guidance based on what the user actually said.
+           - Ask at most ONE follow-up question per reply, only when something essential is missing.
+           - Offer a short action plan (3-4 steps) only once the user's goal is clear, then ask if they agree before diving into details.
+
+        STYLE RULES:
+        - Keep replies short and conversational. Never ask multiple numbered questions in one message.
+        - Use Markdown (bold, bullet points) sparingly for a professional presentation.
       `,
       messages: await convertToModelMessages(messages),
       temperature: 0.4, // Lower temperature so the AI answers consistently and less "creatively"
     });
 
-    return result.toUIMessageStreamResponse();
+    return result.toUIMessageStreamResponse({
+      messageMetadata: ({ part }) => {
+        if (part.type === 'start') {
+          return { sources };
+        }
+      },
+    });
 
 
   } catch (error: any) {

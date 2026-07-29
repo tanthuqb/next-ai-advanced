@@ -9,7 +9,26 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { SendIcon, Bot, User, Sparkles } from "lucide-react"
+import { SendIcon, Bot, User, Sparkles, FileText } from "lucide-react"
+import { Streamdown } from 'streamdown'
+
+type Source = {
+  id: number
+  title: string
+  similarity: number
+  snippet: string
+}
+
+function getMessageSources(message: UIMessage): Source[] {
+  const sources = (message.metadata as { sources?: Source[] } | undefined)?.sources
+  return Array.isArray(sources) ? sources : []
+}
+
+const SUGGESTED_QUESTIONS = [
+  'What roles is SuZu Group hiring for?',
+  'How should I prepare my portfolio?',
+  'Help me plan a career switch into media',
+]
 
 function getMessageText(message: UIMessage) {
   return message.parts
@@ -61,11 +80,11 @@ export default function ChatPage() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                 </span>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Hands-on Career Advisor</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">AI Career Advisor · RAG-powered</p>
               </div>
             </div>
           </div>
-          <Badge variant="secondary" className="font-mono text-[10px] px-2 py-0">v2.0 Flash</Badge>
+          <Badge variant="secondary" className="font-mono text-[10px] px-2 py-0">Gemini 3.6 Flash</Badge>
         </CardHeader>
 
         {/* Message area */}
@@ -73,13 +92,25 @@ export default function ChatPage() {
           <ScrollArea ref={scrollRef} className="h-full">
             <div className="space-y-6 px-4 py-5 sm:px-6 sm:py-6">
               {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-40 text-center space-y-3">
+                <div className="flex flex-col items-center justify-center h-52 text-center space-y-4">
                   <div className="bg-white p-4 rounded-full shadow-sm border">
                     <Sparkles className="w-6 h-6 text-blue-500 animate-pulse" />
                   </div>
                   <p className="text-sm text-slate-500 max-w-[250px]">
-                    Suzu is ready. Try asking about your skill development roadmap!
+                    Suzu is ready. Ask anything, or start with one of these:
                   </p>
+                  <div className="flex flex-wrap justify-center gap-2 px-4">
+                    {SUGGESTED_QUESTIONS.map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={() => sendMessage({ text: q })}
+                        className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs text-slate-600 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -99,7 +130,38 @@ export default function ChatPage() {
                         ? 'bg-blue-600 text-white rounded-tr-none' 
                         : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
                     }`}>
-                      <div className="whitespace-pre-wrap break-words">{getMessageText(m)}</div>
+                      {m.role === 'user' ? (
+                        <div className="whitespace-pre-wrap break-words">{getMessageText(m)}</div>
+                      ) : (
+                        <>
+                          <Streamdown className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                            {getMessageText(m)}
+                          </Streamdown>
+                          {getMessageSources(m).length > 0 && (
+                            <details className="mt-3 border-t border-slate-100 pt-2 text-xs text-slate-500">
+                              <summary className="flex cursor-pointer select-none items-center gap-1.5 font-medium hover:text-slate-700">
+                                <FileText className="h-3.5 w-3.5" />
+                                View sources ({getMessageSources(m).length})
+                              </summary>
+                              <ul className="mt-2 space-y-2">
+                                {getMessageSources(m).map((s) => (
+                                  <li key={s.id} className="rounded-lg bg-slate-50 p-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-semibold text-slate-600">📄 {s.title}</span>
+                                      <span className="shrink-0 font-mono text-[10px] text-slate-400">
+                                        {(s.similarity * 100).toFixed(0)}% match
+                                      </span>
+                                    </div>
+                                    {s.snippet && (
+                                      <p className="mt-1 line-clamp-2 text-slate-400">{s.snippet}</p>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -39,7 +39,7 @@ export default function SuzuChat() {
     void sendMessage({ text: value });
   };
 
-  // Tự động cuộn xuống khi có tin nhắn mới
+  // Auto-scroll to the bottom when a new message arrives
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo(0, scrollRef.current.scrollHeight);
@@ -56,7 +56,7 @@ export default function SuzuChat() {
             </div>
             <div>
               <p className="text-lg font-bold">Suzu AI</p>
-              <p className="text-xs text-muted-foreground font-normal">Cố vấn nghề nghiệp thực chiến</p>
+              <p className="text-xs text-muted-foreground font-normal">Hands-on Career Advisor</p>
             </div>
           </CardTitle>
         </CardHeader>
@@ -66,7 +66,7 @@ export default function SuzuChat() {
             <div className="space-y-4">
               {messages.length === 0 && (
                 <div className="text-center py-10 text-muted-foreground">
-                  <p className="text-sm italic">"Chào bạn, mình là Suzu. Hôm nay bạn muốn chinh phục mục tiêu nào?"</p>
+                  <p className="text-sm italic">"Hi, I'm Suzu. Which goal would you like to conquer today?"</p>
                 </div>
               )}
               
@@ -119,7 +119,7 @@ export default function SuzuChat() {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Hỏi Suzu về kỹ năng, lương thưởng..."
+              placeholder="Ask Suzu about skills, salary, benefits..."
               className="flex-1 focus-visible:ring-primary border-slate-200"
             />
             <Button type="submit" disabled={isLoading || !input} size="icon" className="shrink-0 transition-all active:scale-95">

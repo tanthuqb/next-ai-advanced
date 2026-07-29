@@ -12,12 +12,12 @@ export async function POST(req: Request) {
             process.env.SUPABASE_SERVICE_ROLE_KEY! 
         )
 
-        // 1. Khởi tạo MPNet (768 dims)
+        // 1. Initialize MPNet (768 dims)
         if (!extractor) {
             extractor = await pipeline('feature-extraction', 'Xenova/all-mpnet-base-v2');
         }
 
-        // 2. Xử lý Page ID dựa trên cột 'path' (Vì schema của ông dùng path NOT NULL UNIQUE)
+        // 2. Resolve the page ID based on the 'path' column (the schema declares path NOT NULL UNIQUE)
         const targetPath = '/internal/suzu-knowledge';
         let pageId: number;
 
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
         if (existingPage) {
             pageId = existingPage.id;
         } else {
-            // Nếu chưa có thì tạo mới, điền các cột theo schema: path, type, source
+            // If it does not exist yet, create it with the schema columns: path, type, source
             const { data: newPage, error: pageError } = await supabase
                 .from('nods_page')
                 .insert({ 
@@ -41,18 +41,18 @@ export async function POST(req: Request) {
                 .select('id')
                 .single();
             
-            if (pageError) throw new Error("Lỗi tạo nods_page: " + pageError.message);
+            if (pageError) throw new Error("Failed to create nods_page: " + pageError.message);
             pageId = newPage.id;
         }
 
-        // 3. Cắt nhỏ và tạo Embedding
+        // 3. Split into chunks and generate embeddings
         const chunks = content.split('\n').filter((c: string) => c.trim().length > 0)
         
         for (const chunk of chunks) {
             const output = await extractor(chunk, { pooling: 'mean', normalize: true });
             const embedding = Array.from(output.data);
 
-            // 4. Insert vào nods_page_section (Cột: page_id, content, embedding, slug)
+            // 4. Insert into nods_page_section (columns: page_id, content, embedding, slug)
             const { error: insertError } = await supabase.from('nods_page_section').insert({
                 page_id: pageId, // Bigint
                 content: chunk,
@@ -61,14 +61,14 @@ export async function POST(req: Request) {
             })
 
             if (insertError) {
-                console.error('Lỗi chèn Section:', insertError);
+                console.error('Failed to insert section:', insertError);
                 throw insertError;
             }
         }
 
         return NextResponse.json({ 
             success: true, 
-            message: `Suzu đã nạp xong kiến thức vào path: ${targetPath}` 
+            message: `Suzu has finished ingesting knowledge into path: ${targetPath}`
         })
 
     } catch (error: any) {

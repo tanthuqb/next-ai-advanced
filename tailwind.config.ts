@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  // QUAN TRỌNG: Phải có đủ các đường dẫn này
+  // IMPORTANT: All of these paths must be included
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -10,7 +10,7 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      // Đảm bảo có các biến màu của shadcn ở đây
+      // Make sure the shadcn color variables are defined here
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

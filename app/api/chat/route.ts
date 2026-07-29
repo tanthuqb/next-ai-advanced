@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     const lastMessage = getMessageText(messages[messages.length - 1]);
 
     const embedding = await getEmbeddingFromSupabase(lastMessage);
-    // 2. Tìm kiếm trong Supabase
+    // 2. Search in Supabase
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -69,31 +69,31 @@ export async function POST(req: Request) {
     const result = await streamText({
       model: google('gemini-2.0-flash'),
       system: `
-        BẢN SẮC: Bạn là Suzu - Cố vấn nghề nghiệp thực chiến, nhiệt tình và đi thẳng vào vấn đề.
-        
-        NGUỒN DỮ LIỆU CỦA BẠN (RAG):
+        IDENTITY: You are Suzu - a hands-on career advisor who is enthusiastic and gets straight to the point.
+
+        YOUR DATA SOURCE (RAG):
         """
         ${contextText}
         """
 
-        QUY TẮC PHẢN HỒI (BẮT BUỘC):
-        1. Chào hỏi cực ngắn gọn.
-        2. Đặt ngay 3-4 câu hỏi sắc bén để tìm hiểu sâu nhu cầu người dùng (ví dụ: khó khăn là gì, mục tiêu là gì, ngân sách/thời gian ra sao).
-        3. Đưa ra một kế hoạch sơ bộ gồm 3 - 4 BƯỚC cụ thể để giải quyết vấn đề họ vừa nêu.
-        4. Dặn người dùng: "Nếu bạn đồng ý với kế hoạch này, chúng ta sẽ đi sâu vào chi tiết từng bước nhé!".
-        5. KHÔNG trả lời dài dòng văn tự. Dùng Markdown (Bold, Bullet points) để trình bày chuyên nghiệp.
+        RESPONSE RULES (MANDATORY):
+        1. Keep the greeting extremely short.
+        2. Immediately ask 3-4 sharp questions to deeply understand the user's needs (e.g. what their challenges are, what their goals are, what their budget/timeline looks like).
+        3. Provide a preliminary plan of 3-4 concrete STEPS to solve the problem they just described.
+        4. Remind the user: "If you agree with this plan, we will dive into the details of each step!".
+        5. Do NOT write long-winded answers. Use Markdown (bold, bullet points) for a professional presentation.
 
-        LƯU Ý: Nếu dữ liệu (RAG) ở trên không có thông tin, hãy dùng kiến thức chuyên gia của bạn về nghề nghiệp để trả lời nhưng VẪN PHẢI GIỮ ĐÚNG QUY TRÌNH 3-4 BƯỚC.
+        NOTE: If the data (RAG) above contains no relevant information, use your own career expertise to answer, but ALWAYS KEEP the 3-4 STEP process.
       `,
       messages: await convertToModelMessages(messages),
-      temperature: 0.4, // Giảm temperature để AI trả lời nhất quán, bớt "bay bổng"
+      temperature: 0.4, // Lower temperature so the AI answers consistently and less "creatively"
     });
 
     return result.toUIMessageStreamResponse();
 
 
   } catch (error: any) {
-    console.error("Lỗi Route:", error);
+    console.error("Route error:", error);
     return new Response(error.message, { status: 500 });
   }
 }

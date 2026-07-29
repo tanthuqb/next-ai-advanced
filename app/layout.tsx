@@ -5,8 +5,8 @@ import "./styles/globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Suzu AI - Cố vấn thực chiến",
-  description: "Hệ thống RAG tư vấn nghề nghiệp",
+  title: "Suzu AI - Hands-on Career Advisor",
+  description: "RAG-powered career advisory system",
 };
 
 export default function RootLayout({
@@ -17,7 +17,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="light">
       <body className={`${inter.className} antialiased bg-slate-50`}>
-        {/* Bao bọc bởi một thẻ main để căn chỉnh layout tốt hơn */}
+        {/* Wrap children in a main tag for better layout alignment */}
         <main className="min-h-screen">
           {children}
         </main>

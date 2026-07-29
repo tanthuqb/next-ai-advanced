@@ -8,7 +8,7 @@ const supabase = createClient(
 
 export async function saveDocument(content: string) {
   try {
-    // 1. Gọi cái Edge Function mình vừa làm
+    // 1. Call the Edge Function we just built
     const res = await fetch('http://127.0.0.1:54321/functions/v1/Embedding', {
       method: 'POST',
       body: JSON.stringify({ input: content })
@@ -20,14 +20,14 @@ export async function saveDocument(content: string) {
     
     const { embedding } = await res.json()
 
-    // 2. Lưu vào Supabase
+    // 2. Save to Supabase
     const { error } = await supabase
       .from('nods_page_section')
       .insert({
         content: content,
         embedding: embedding,
-        slug: 'quy-dinh-cong-ty',
-        heading: 'Quy định'
+        slug: 'company-policy',
+        heading: 'Policy'
       })
 
     if (error) {

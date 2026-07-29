@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 
-// Setup CORS headers để gọi được từ trình duyệt (Next.js)
+// Setup CORS headers so the function can be called from the browser (Next.js)
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -53,7 +53,7 @@ async function getGoogleEmbedding(input: string) {
 }
 
 serve(async (req) => {
-  // Xử lý request Preflight (CORS)
+  // Handle preflight requests (CORS)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -71,7 +71,7 @@ serve(async (req) => {
     const embedding = await getGoogleEmbedding(input)
 
 
-    // 3. Nếu là Admin đang nạp kiến thức (Ingest)
+    // 3. If an admin is ingesting knowledge (Ingest)
     if (isIngest) {
       const supabaseUrl = Deno.env.get('EDGE_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL')
       const serviceRoleKey =
@@ -117,12 +117,12 @@ serve(async (req) => {
 
       if (error) throw error
 
-      return new Response(JSON.stringify({ success: true, message: "Suzu đã học xong kiến thức mới!" }), {
+      return new Response(JSON.stringify({ success: true, message: "Suzu has finished learning the new knowledge!" }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // 4. Nếu là Chat (Search), trả về embedding để thực hiện RPC tìm kiếm
+    // 4. If this is a chat (search) request, return the embedding for the search RPC
     return new Response(JSON.stringify({ embedding }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

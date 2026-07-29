@@ -27,7 +27,7 @@ export default function ChatPage() {
   const endRef = useRef<HTMLDivElement>(null)
   const loading = status === 'submitted' || status === 'streaming'
 
-  // Tự động cuộn xuống khi có tin nhắn mới
+  // Auto-scroll to the bottom when a new message arrives
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, loading])
@@ -48,7 +48,7 @@ export default function ChatPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#eff6ff,_#e2e8f0_55%,_#dbe4f0)] p-4 font-sans sm:p-6">
       <Card className="flex h-[88vh] w-full max-w-3xl flex-col overflow-hidden border-none shadow-2xl shadow-slate-300/60">
-        {/* Header xịn xò */}
+        {/* Fancy header */}
         <CardHeader className="flex flex-row items-center justify-between border-b bg-white/95 py-4 px-5 backdrop-blur sm:px-6">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg shadow-blue-200 shadow-lg">
@@ -61,14 +61,14 @@ export default function ChatPage() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                 </span>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Cố vấn thực chiến</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Hands-on Career Advisor</p>
               </div>
             </div>
           </div>
           <Badge variant="secondary" className="font-mono text-[10px] px-2 py-0">v2.0 Flash</Badge>
         </CardHeader>
 
-        {/* Khu vực tin nhắn */}
+        {/* Message area */}
         <CardContent className="min-h-0 flex-1 bg-slate-50/40 p-0">
           <ScrollArea ref={scrollRef} className="h-full">
             <div className="space-y-6 px-4 py-5 sm:px-6 sm:py-6">
@@ -78,7 +78,7 @@ export default function ChatPage() {
                     <Sparkles className="w-6 h-6 text-blue-500 animate-pulse" />
                   </div>
                   <p className="text-sm text-slate-500 max-w-[250px]">
-                    Suzu đã sẵn sàng. Hãy thử hỏi về lộ trình phát triển kỹ năng của bạn!
+                    Suzu is ready. Try asking about your skill development roadmap!
                   </p>
                 </div>
               )}
@@ -131,7 +131,7 @@ export default function ChatPage() {
                 className="rounded-xl border-slate-200 bg-slate-50/70 py-6 pr-10 focus-visible:ring-blue-500"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Nhắn gì đó cho Suzu..."
+                placeholder="Send Suzu a message..."
                 disabled={loading}
               />
             </div>

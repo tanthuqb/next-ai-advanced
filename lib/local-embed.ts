@@ -2,11 +2,11 @@ import { pipeline } from '@xenova/transformers';
 
 export async function getLocalEmbedding(text: string) {
 
-    // Model này cực nhẹ (~100MB), hỗ trợ đa ngôn ngữ ổn
+    // This model is very lightweight (~100MB) with decent multilingual support
     const extractor = await pipeline('feature-extraction', 'Xenova/all-mpnet-base-v2');
     
     const output = await extractor(text, { pooling: 'mean', normalize: true });
     
-    // Chuyển kết quả về mảng số thuần túy
+    // Convert the result to a plain number array
     return Array.from(output.data); 
 }

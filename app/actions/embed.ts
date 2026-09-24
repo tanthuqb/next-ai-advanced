@@ -1,38 +1,18 @@
 'use server'
-import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || ''
-)
+import { ingestChunks } from '@/lib/ingest'
 
+// Server action: save a single document through the `Embedding` Edge Function
+// (same pipeline as POST /api/ingest). The Edge Function writes with the
+// service-role key, attaches the row to the knowledge-base page, and uses the
+// same embedding model as the chat route.
 export async function saveDocument(content: string) {
   try {
-    // 1. Call the Edge Function we just built
-    const res = await fetch('http://127.0.0.1:54321/functions/v1/Embedding', {
-      method: 'POST',
-      body: JSON.stringify({ input: content })
-    })
-    
-    if (!res.ok) {
-      throw new Error(`Embedding API error: ${res.statusText}`)
+    if (!content || content.trim().length === 0) {
+      throw new Error('content must be a non-empty string')
     }
-    
-    const { embedding } = await res.json()
 
-    // 2. Save to Supabase
-    const { error } = await supabase
-      .from('nods_page_section')
-      .insert({
-        content: content,
-        embedding: embedding,
-        slug: 'company-policy',
-        heading: 'Policy'
-      })
-
-    if (error) {
-      throw new Error(`Database error: ${error.message}`)
-    }
+    await ingestChunks([content.trim()])
 
     return { success: true }
   } catch (error) {

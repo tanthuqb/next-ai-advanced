@@ -53,3 +53,12 @@ out/
 tmp/
 temp/
 supabase/functions/.env.secrets
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# TypeScript
+*.tsbuildinfo

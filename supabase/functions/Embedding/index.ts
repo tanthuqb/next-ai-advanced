@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from '@supabase/supabase-js'
 
 
 // Setup CORS headers so the function can be called from the browser (Next.js)
@@ -52,7 +51,7 @@ async function getGoogleEmbedding(input: string) {
   return values as number[]
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle preflight requests (CORS)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -71,15 +70,17 @@ serve(async (req) => {
     const embedding = await getGoogleEmbedding(input)
 
 
-    // 3. If an admin is ingesting knowledge (Ingest)
+    // If an admin is ingesting knowledge (Ingest)
     if (isIngest) {
       const supabaseUrl = Deno.env.get('EDGE_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL')
+      // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected automatically by the
+      // Supabase Edge Runtime. Writes must use the service-role key (RLS blocks anon writes).
       const serviceRoleKey =
-        Deno.env.get('EDGE_SERVICE_ROLE_KEY') ?? Deno.env.get('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')
+        Deno.env.get('EDGE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
       if (!supabaseUrl || !serviceRoleKey) {
         throw new Error(
-          'Missing EDGE_SUPABASE_URL/EDGE_SERVICE_ROLE_KEY (or default SUPABASE_URL/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) in function secrets'
+          'Missing EDGE_SUPABASE_URL/EDGE_SERVICE_ROLE_KEY (or the built-in SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY) in function secrets'
         )
       }
 
@@ -122,7 +123,7 @@ serve(async (req) => {
       })
     }
 
-    // 4. If this is a chat (search) request, return the embedding for the search RPC
+    // Chat (search) request, return the embedding for the search RPC
     return new Response(JSON.stringify({ embedding }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

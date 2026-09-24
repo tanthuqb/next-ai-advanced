@@ -1,109 +1,159 @@
-import { google } from '@ai-sdk/google';
-import { convertToModelMessages, streamText, type UIMessage } from 'ai';
-import { createClient } from '@supabase/supabase-js';
+import {
+  convertToModelMessages,
+  createUIMessageStreamResponse,
+  streamText,
+  toUIMessageStream,
+  type UIMessage,
+} from 'ai'
+import { createClient } from '@supabase/supabase-js'
+import { chatModel } from '@/lib/chat-model'
+
+type MatchedSection = {
+  id: number
+  page_id: number
+  slug: string | null
+  heading: string | null
+  content: string | null
+  similarity: number
+}
 
 function getMessageText(message?: UIMessage) {
   if (!message) {
-    return '';
+    return ''
   }
 
   return message.parts
     .filter((part): part is Extract<UIMessage['parts'][number], { type: 'text' }> => part.type === 'text')
     .map((part) => part.text)
-    .join('');
+    .join('')
+}
+
+function getSupabaseEnv() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+  if (!supabaseUrl || !publishableKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.')
+  }
+
+  return { supabaseUrl, publishableKey }
 }
 
 async function getEmbeddingFromSupabase(input: string) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Missing Supabase environment variables for embedding function call.');
-  }
+  const { supabaseUrl, publishableKey } = getSupabaseEnv()
 
   const response = await fetch(`${supabaseUrl}/functions/v1/Embedding`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${serviceRoleKey}`,
-      apikey: serviceRoleKey,
+      Authorization: `Bearer ${publishableKey}`,
+      apikey: publishableKey,
     },
     body: JSON.stringify({ input }),
-  });
+  })
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Embedding function failed: ${response.status} ${text}`);
+    const text = await response.text()
+    throw new Error(`Embedding function failed: ${response.status} ${text}`)
   }
 
-  const payload = (await response.json()) as { embedding?: number[] };
+  const payload = (await response.json()) as { embedding?: number[] }
 
   if (!Array.isArray(payload.embedding) || payload.embedding.length === 0) {
-    throw new Error('Embedding function returned invalid embedding payload.');
+    throw new Error('Embedding function returned invalid embedding payload.')
   }
 
-  return payload.embedding;
+  return payload.embedding
 }
 
-export async function POST(req: Request) {
-  try {
-    const { messages } = (await req.json()) as { messages: UIMessage[] };
-    const lastMessage = getMessageText(messages[messages.length - 1]);
+async function findContextSections(query: string): Promise<MatchedSection[]> {
+  const { supabaseUrl, publishableKey } = getSupabaseEnv()
+  const embedding = await getEmbeddingFromSupabase(query)
+  const supabase = createClient(supabaseUrl, publishableKey)
 
-    const embedding = await getEmbeddingFromSupabase(lastMessage);
-    // 2. Search in Supabase
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    );
+  const { data, error } = await supabase.rpc('match_page_sections', {
+    query_embedding: embedding,
+    match_threshold: 0.3,
+    match_count: 5,
+  })
 
-    const { data: contextSections } = await supabase.rpc('match_page_sections', {
-      query_embedding: embedding,
-      match_threshold: 0.3,
-      match_count: 5,
-    });
+  if (error) {
+    throw new Error(`match_page_sections failed: ${error.message}`)
+  }
 
-    const contextText = contextSections?.map((s: any) => s.content).join('\n\n') || "";
+  return (data ?? []) as MatchedSection[]
+}
 
-    // Citations sent to the client as message metadata (rendered as "View sources").
-    // Only cite sources the answer is genuinely grounded in. Weakly-related
-    // matches (kept in contextText for the model) would over-claim as citations.
-    const CITATION_THRESHOLD = 0.7;
-    const seenKeys = new Set<string>();
-    const sources = (contextSections ?? [])
-      .filter((s: any) => s.similarity >= CITATION_THRESHOLD)
-      .map((s: any) => {
-        const content: string = typeof s.content === 'string' ? s.content : '';
+// Citations sent to the client as message metadata (rendered as "View sources").
+// Only cite sources the answer is genuinely grounded in. Weakly-related
+// matches (kept in the prompt context for the model) would over-claim as citations.
+const CITATION_THRESHOLD = 0.7
+
+function buildSources(sections: MatchedSection[]) {
+  const seenKeys = new Set<string>()
+
+  return (
+    sections
+      .filter((s) => s.similarity >= CITATION_THRESHOLD)
+      .map((s) => {
+        const content = typeof s.content === 'string' ? s.content : ''
         // Stored headings are generic ("Edge ingest"), so derive a title from the chunk itself.
-        const hasRealHeading = s.heading && s.heading !== 'Edge ingest';
+        const hasRealHeading = s.heading && s.heading !== 'Edge ingest'
         const title: string = hasRealHeading
-          ? s.heading
-          : content.split(/[.:\n]/)[0].trim().slice(0, 60) || s.slug || `Section ${s.id}`;
+          ? (s.heading as string)
+          : content.split(/[.:\n]/)[0].trim().slice(0, 60) || s.slug || `Section ${s.id}`
         return {
           id: s.id,
           title,
           similarity: s.similarity,
           // Omit the snippet when it would just repeat the title.
-          snippet: content.length > title.length + 20
-            ? (content.length > 180 ? content.slice(0, 180) + '…' : content)
-            : '',
-          _dedupeKey: (content || title).trim().toLowerCase(),
-        };
+          snippet:
+            content.length > title.length + 20
+              ? content.length > 180
+                ? content.slice(0, 180) + '…'
+                : content
+              : '',
+          dedupeKey: (content || title).trim().toLowerCase(),
+        }
       })
       // Duplicate chunks (same doc ingested twice) collapse into one entry;
       // results are sorted by similarity, so the best match wins.
-      .filter((s: { _dedupeKey: string; title: string }) => {
-        const keys = [s._dedupeKey, s.title.toLowerCase()];
-        if (keys.some((k) => seenKeys.has(k))) return false;
-        keys.forEach((k) => seenKeys.add(k));
-        return true;
+      .filter((s) => {
+        const keys = [s.dedupeKey, s.title.toLowerCase()]
+        if (keys.some((k) => seenKeys.has(k))) return false
+        keys.forEach((k) => seenKeys.add(k))
+        return true
       })
-      .map(({ _dedupeKey, ...s }: { _dedupeKey: string; [k: string]: any }) => s);
+      .map((s) => ({ id: s.id, title: s.title, similarity: s.similarity, snippet: s.snippet }))
+  )
+}
 
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json().catch(() => null)) as { messages?: UIMessage[] } | null
+    const messages = body?.messages
 
-    const result = await streamText({
-      model: google('gemini-3.6-flash'),
-      system: `
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return new Response('Request body must include a non-empty "messages" array.', { status: 400 })
+    }
+
+    const lastMessage = getMessageText(messages[messages.length - 1])
+
+    // RAG retrieval. If it fails (edge function / RPC down), keep chatting
+    // without context instead of failing the whole request.
+    let contextSections: MatchedSection[] = []
+    try {
+      contextSections = lastMessage.trim() ? await findContextSections(lastMessage) : []
+    } catch (error) {
+      console.error('RAG retrieval failed, answering without context:', error)
+    }
+
+    const contextText = contextSections.map((s) => s.content).join('\n\n')
+    const sources = buildSources(contextSections)
+
+    const result = streamText({
+      model: chatModel,
+      instructions: `
         IDENTITY: You are Suzu - a hands-on career advisor who is enthusiastic, warm, and gets straight to the point.
 
         YOUR DATA SOURCE (RAG):
@@ -125,24 +175,39 @@ export async function POST(req: Request) {
            - Offer a short action plan (3-4 steps) only once the user's goal is clear, then ask if they agree before diving into details.
 
         STYLE RULES:
+        - Always reply in English unless the user writes in another language.
         - Keep replies short and conversational. Never ask multiple numbered questions in one message.
         - Use Markdown (bold, bullet points) sparingly for a professional presentation.
       `,
       messages: await convertToModelMessages(messages),
       temperature: 0.4, // Lower temperature so the AI answers consistently and less "creatively"
-    });
+    })
 
-    return result.toUIMessageStreamResponse({
-      messageMetadata: ({ part }) => {
-        if (part.type === 'start') {
-          return { sources };
-        }
-      },
-    });
-
-
-  } catch (error: any) {
-    console.error("Route error:", error);
-    return new Response(error.message, { status: 500 });
+    return createUIMessageStreamResponse({
+      stream: toUIMessageStream({
+        stream: result.stream,
+        // Log the real error server-side; send the client a safe, readable message.
+        onError: (error) => {
+          console.error('Chat stream error:', error)
+          const text = error instanceof Error ? error.message : String(error)
+          if (/quota|rate limit|RESOURCE_EXHAUSTED|429/i.test(text)) {
+            return 'Suzu has hit the AI provider rate limit. Please wait a moment and try again.'
+          }
+          if (/high demand|overloaded|UNAVAILABLE|503/i.test(text)) {
+            return 'The AI model is overloaded right now. Please try again shortly.'
+          }
+          return 'Suzu could not generate a reply.'
+        },
+        messageMetadata: ({ part }) => {
+          if (part.type === 'start') {
+            return { sources }
+          }
+        },
+      }),
+    })
+  } catch (error) {
+    console.error('Route error:', error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return new Response(message, { status: 500 })
   }
 }

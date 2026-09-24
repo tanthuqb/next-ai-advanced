@@ -66,7 +66,7 @@ export default function SuzuChat() {
             <div className="space-y-4">
               {messages.length === 0 && (
                 <div className="text-center py-10 text-muted-foreground">
-                  <p className="text-sm italic">"Hi, I'm Suzu. Which goal would you like to conquer today?"</p>
+                  <p className="text-sm italic">&ldquo;Hi, I&apos;m Suzu. Which goal would you like to conquer today?&rdquo;</p>
                 </div>
               )}
               

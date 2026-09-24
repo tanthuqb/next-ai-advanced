@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { SendIcon, Bot, User, Sparkles, FileText } from "lucide-react"
 import { Streamdown } from 'streamdown'
+import { CHAT_MODEL_LABEL } from '@/lib/models'
 
 type Source = {
   id: number
@@ -38,7 +39,7 @@ function getMessageText(message: UIMessage) {
 }
 
 export default function ChatPage() {
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, error } = useChat({
     transport: new DefaultChatTransport({ api: '/api/chat' }),
   })
   const [input, setInput] = useState('')
@@ -84,7 +85,7 @@ export default function ChatPage() {
               </div>
             </div>
           </div>
-          <Badge variant="secondary" className="font-mono text-[10px] px-2 py-0">Gemini 3.6 Flash</Badge>
+          <Badge variant="secondary" className="font-mono text-[10px] px-2 py-0">{CHAT_MODEL_LABEL}</Badge>
         </CardHeader>
 
         {/* Message area */}
@@ -115,7 +116,7 @@ export default function ChatPage() {
               )}
 
               {messages.map((m) => (
-                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div key={m.id} data-testid="chat-message" data-role={m.role} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`flex max-w-[90%] gap-3 sm:max-w-[85%] ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
                     <Avatar className={`w-8 h-8 border-2 ${m.role === 'user' ? 'border-blue-100' : 'border-white'}`}>
                       {m.role === 'user' ? (
@@ -180,6 +181,13 @@ export default function ChatPage() {
                 </div>
               )}
 
+              {error && (
+                <p role="alert" data-testid="chat-error" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                  Suzu could not answer right now. Please try again.
+                  {error.message && <span className="mt-1 block text-red-600/80">{error.message}</span>}
+                </p>
+              )}
+
               <div ref={endRef} />
             </div>
           </ScrollArea>
@@ -194,11 +202,13 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Send Suzu a message..."
+                aria-label="Message"
                 disabled={loading}
               />
             </div>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
+              aria-label="Send message"
               disabled={loading || !input}
               className="h-[52px] w-[52px] rounded-xl bg-blue-600 hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
             >

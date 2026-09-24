@@ -1,5 +1,8 @@
+import { google } from '@ai-sdk/google'
 import { createClient } from '@supabase/supabase-js'
+import { embed } from 'ai'
 import { createHash } from 'crypto'
+import { existsSync } from 'fs'
 import dotenv from 'dotenv'
 import { ObjectExpression } from 'estree'
 import { readdir, readFile, stat } from 'fs/promises'
@@ -10,16 +13,14 @@ import { mdxFromMarkdown, MdxjsEsm } from 'mdast-util-mdx'
 import { toMarkdown } from 'mdast-util-to-markdown'
 import { toString } from 'mdast-util-to-string'
 import { mdxjs } from 'micromark-extension-mdxjs'
-import 'openai'
-import {  OpenAI } from 'openai'
-import COnfiguartion from "openai"
 import { basename, dirname, join } from 'path'
 import { u } from 'unist-builder'
 import { filter } from 'unist-util-filter'
-import { inspect } from 'util'
 import yargs from 'yargs'
+import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL_ID } from './models'
 
-dotenv.config()
+// Load .env.local first (Next.js convention), then .env as a fallback.
+dotenv.config({ path: ['.env.local', '.env'], quiet: true })
 
 const ignoredFiles = ['pages/404.mdx']
 
@@ -237,7 +238,7 @@ abstract class BaseEmbeddingSource {
 }
 
 class MarkdownEmbeddingSource extends BaseEmbeddingSource {
-  type: 'markdown' = 'markdown'
+  type = 'markdown' as const
 
   constructor(source: string, public filePath: string, public parentFilePath?: string) {
     const path = filePath.replace(/^pages/, '').replace(/\.mdx?$/, '')
@@ -276,17 +277,18 @@ async function generateEmbeddings() {
 
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    !process.env.OPENAI_KEY
+    !process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    !process.env.GOOGLE_GENERATIVE_AI_API_KEY
   ) {
     return console.log(
-      'Environment variables NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, and OPENAI_KEY are required: skipping embeddings generation'
+      'Environment variables NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and GOOGLE_GENERATIVE_AI_API_KEY are required: skipping embeddings generation'
     )
   }
 
   const supabaseClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    // Writes are service-role only (RLS allows public reads, not writes).
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
     {
       auth: {
         persistSession: false,
@@ -295,8 +297,14 @@ async function generateEmbeddings() {
     }
   )
 
+  // Markdown/MDX sources live in ./pages (e.g. pages/careers/intro.mdx).
+  const sourceDir = 'pages'
+  if (!existsSync(sourceDir)) {
+    return console.log(`No ./${sourceDir} directory with .md/.mdx files found: nothing to embed`)
+  }
+
   const embeddingSources: EmbeddingSource[] = [
-    ...(await walk('pages'))
+    ...(await walk(sourceDir))
       .filter(({ path }) => /\.mdx?$/.test(path))
       .filter(({ path }) => !ignoredFiles.includes(path))
       .map((entry) => new MarkdownEmbeddingSource('guide', entry.path)),
@@ -328,11 +336,11 @@ async function generateEmbeddings() {
         throw fetchPageError
       }
 
-      type Singular<T> = T extends any[] ? T[0] : T
+      type Singular<T> = T extends unknown[] ? T[0] : T
 
       // We use checksum to determine if this page & its sections need to be regenerated
       if (!shouldRefresh && existingPage?.checksum === checksum) {
-        const existingParentPage = (existingPage?.parentPage as any)?.[0] as Singular<
+        const existingParentPage = (existingPage?.parentPage as unknown[] | null)?.[0] as Singular<
           typeof existingPage.parentPage
         >
 
@@ -417,37 +425,29 @@ async function generateEmbeddings() {
 
       console.log(`[${path}] Adding ${sections.length} page sections (with embeddings)`)
       for (const { slug, heading, content } of sections) {
-        // OpenAI recommends replacing newlines with spaces for best results (specific to embeddings)
+        // Newlines add no meaning for embeddings; flatten them for more stable vectors.
         const input = content.replace(/\n/g, ' ')
 
         try {
-          const openai = new OpenAI({
-            apiKey: process.env.OPENAI_KEY,
+          // Same model + dimensions as the Edge Function used by /api/chat, so
+          // documents and queries live in the same embedding space (vector(768)).
+          const { embedding, usage } = await embed({
+            model: google.embedding(EMBEDDING_MODEL_ID),
+            value: input,
+            providerOptions: {
+              google: { outputDimensionality: EMBEDDING_DIMENSIONS },
+            },
           })
-       
-          const embeddingResponse = await openai.embeddings.create({
-            model: 'text-embedding-3-small',
-            input,
-          })
 
-          console.log('Embedding response:', embeddingResponse)
-          
-          if (!embeddingResponse.data  ) {
-            throw new Error(inspect(embeddingResponse.data, false, 2))
-          }
-
-
-          const responseData = embeddingResponse.data[0].embedding
-
-          const { error: insertPageSectionError, data: pageSection } = await supabaseClient
+          const { error: insertPageSectionError } = await supabaseClient
             .from('nods_page_section')
             .insert({
               page_id: page.id,
               slug,
               heading,
               content,
-              token_count: embeddingResponse.usage.total_tokens,
-              embedding: responseData,
+              token_count: usage?.tokens ?? null,
+              embedding,
             })
             .select()
             .limit(1)

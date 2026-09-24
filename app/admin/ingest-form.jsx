@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 
-export default function AdminPage() {
+export default function IngestForm() {
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState(null)

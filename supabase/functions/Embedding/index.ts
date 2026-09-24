@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
+import { checkFunctionSecret } from './auth.ts'
 
-
-// Setup CORS headers so the function can be called from the browser (Next.js)
+// CORS headers (kept for tooling). Callers must also send x-ingest-secret, so in practice
+// only the Next.js server (which holds INGEST_SECRET) can use this function.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -55,6 +56,17 @@ Deno.serve(async (req) => {
   // Handle preflight requests (CORS)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
+  }
+
+  // Every call (query embedding for /api/chat and the isIngest DB write) must carry
+  // the shared secret: the function is deployed with --no-verify-jwt, and an open
+  // endpoint would let anyone write knowledge or spend the Google API quota.
+  const auth = await checkFunctionSecret(req, Deno.env.get('INGEST_SECRET'))
+  if (!auth.ok) {
+    return new Response(JSON.stringify({ error: auth.error }), {
+      status: auth.status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   try {

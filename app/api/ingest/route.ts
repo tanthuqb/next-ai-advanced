@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
+import { hasAdminSession } from '@/lib/admin-auth'
 import { ingestChunks, splitIntoChunks } from '@/lib/ingest'
 
 export async function POST(req: Request) {
+  // Re-check the session here too: proxy.ts is only an optimistic check.
+  if (!(await hasAdminSession())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const body = (await req.json().catch(() => null)) as { content?: unknown } | null
     const content = body?.content

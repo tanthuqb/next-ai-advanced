@@ -2,6 +2,8 @@
 // with isIngest: true, so documents are embedded with the SAME model the chat
 // route uses for queries (gemini-embedding-001, 768 dims). Embedding with a
 // different model would put vectors in a different space and break retrieval.
+// Callers must verify the admin session first (see lib/admin-auth.ts).
+import { getEmbeddingFunctionRequest } from './embedding-function'
 
 export function splitIntoChunks(content: string) {
   return content
@@ -11,23 +13,14 @@ export function splitIntoChunks(content: string) {
 }
 
 export async function ingestChunks(chunks: string[]) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-
-  if (!supabaseUrl || !publishableKey) {
-    throw new Error('Missing Supabase environment variables for embedding function call.')
-  }
+  const { url, headers } = getEmbeddingFunctionRequest()
 
   // The Edge Function stores one nods_page_section row per call.
   let ingested = 0
   for (const chunk of chunks) {
-    const response = await fetch(`${supabaseUrl}/functions/v1/Embedding`, {
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${publishableKey}`,
-        apikey: publishableKey,
-      },
+      headers,
       body: JSON.stringify({ input: chunk, isIngest: true }),
     })
 

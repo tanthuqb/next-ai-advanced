@@ -7,6 +7,22 @@ import {
 } from 'ai'
 import { createClient } from '@supabase/supabase-js'
 import { chatModel } from '@/lib/chat-model'
+import { getEmbeddingFunctionRequest } from '@/lib/embedding-function'
+import { prepareChatMessages } from '@/lib/chat-guard'
+import { createRateLimiter, getClientIp, readPositiveInt } from '@/lib/rate-limit'
+
+// Quota protection (Gemini free tier is ~5 requests/min/model for the whole API key).
+// In-memory limiter: global on a single `next start` server, per instance on Vercel.
+const chatLimiter = createRateLimiter({
+  limit: readPositiveInt(process.env.CHAT_RATE_LIMIT_PER_MIN, 10),
+  windowMs: 60_000,
+})
+const CHAT_LIMITS = {
+  maxMessages: readPositiveInt(process.env.CHAT_MAX_HISTORY_MESSAGES, 20),
+  maxChars: readPositiveInt(process.env.CHAT_MAX_MESSAGE_CHARS, 4000),
+}
+// Hard cap on the raw request body, checked before JSON parsing.
+const MAX_BODY_BYTES = 512 * 1024
 
 type MatchedSection = {
   id: number
@@ -40,15 +56,11 @@ function getSupabaseEnv() {
 }
 
 async function getEmbeddingFromSupabase(input: string) {
-  const { supabaseUrl, publishableKey } = getSupabaseEnv()
+  const { url, headers } = getEmbeddingFunctionRequest({ requireSecret: false })
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/Embedding`, {
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${publishableKey}`,
-      apikey: publishableKey,
-    },
+    headers,
     body: JSON.stringify({ input }),
   })
 
@@ -128,14 +140,51 @@ function buildSources(sections: MatchedSection[]) {
   )
 }
 
-export async function POST(req: Request) {
-  try {
-    const body = (await req.json().catch(() => null)) as { messages?: UIMessage[] } | null
-    const messages = body?.messages
+function textResponse(text: string, status: number, headers: Record<string, string> = {}) {
+  return new Response(text, {
+    status,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', ...headers },
+  })
+}
 
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return new Response('Request body must include a non-empty "messages" array.', { status: 400 })
+export async function POST(req: Request) {
+  // Rate limit first, so even invalid requests count and never reach Gemini.
+  const rate = await chatLimiter.check(getClientIp(req.headers))
+  if (!rate.allowed) {
+    const seconds = Math.max(1, Math.ceil(rate.retryAfterMs / 1000))
+    return textResponse(
+      `You are sending too many messages. Please wait ${seconds} seconds and try again.`,
+      429,
+      {
+        'Retry-After': String(seconds),
+        'X-RateLimit-Limit': String(chatLimiter.limit),
+        'X-RateLimit-Remaining': '0',
+      }
+    )
+  }
+
+  try {
+    const declaredLength = Number(req.headers.get('content-length') ?? 0)
+    if (declaredLength > MAX_BODY_BYTES) {
+      return textResponse('Request body is too large.', 413)
     }
+    const raw = await req.text()
+    if (raw.length > MAX_BODY_BYTES) {
+      return textResponse('Request body is too large.', 413)
+    }
+
+    let body: { messages?: unknown } | null = null
+    try {
+      body = JSON.parse(raw)
+    } catch {
+      body = null
+    }
+
+    const prepared = prepareChatMessages(body?.messages, CHAT_LIMITS)
+    if ('error' in prepared) {
+      return textResponse(prepared.error, prepared.status)
+    }
+    const messages = prepared.messages
 
     const lastMessage = getMessageText(messages[messages.length - 1])
 

@@ -27,6 +27,8 @@
     "embeddings": "tsx lib/generate-embeddings.ts",
     "embeddings:refresh": "tsx lib/generate-embeddings.ts --refresh",
     "functions": "supabase functions serve Embedding --no-verify-jwt --env-file ./supabase/functions/.env.secrets",
+    "test:unit": "tsx --test \"tests/unit/*.test.ts\"",
+    "test:functions": "deno test --no-lock supabase/functions/Embedding",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

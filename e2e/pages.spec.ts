@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { fulfillWithUIMessageStream } from './helpers'
+import { fulfillWithUIMessageStream, loginAsAdmin } from './helpers'
 
 test.describe('landing page', () => {
   test('renders the title and navigation links', async ({ page }) => {
@@ -63,7 +63,12 @@ test.describe('chat page UI (mocked API)', () => {
   })
 })
 
-test.describe('admin page', () => {
+test.describe('admin page (signed in)', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdmin(page)
+    await expect(page).toHaveURL(/\/admin$/)
+  })
+
   test('renders the ingest form', async ({ page }) => {
     await page.goto('/admin')
     await expect(page.getByRole('heading', { name: 'Feed knowledge to the AI' })).toBeVisible()

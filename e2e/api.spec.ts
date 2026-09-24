@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { chatRequestBody, parseUIMessageStream } from './helpers'
+import { chatRequestBody, loginAsAdmin, parseUIMessageStream } from './helpers'
 
 test.describe('POST /api/chat', () => {
   test('rejects a request without messages', async ({ request }) => {
@@ -39,22 +39,28 @@ test.describe('POST /api/chat', () => {
   })
 })
 
-test.describe('POST /api/ingest', () => {
-  test('rejects empty content without touching the database', async ({ request }) => {
-    const res = await request.post('/api/ingest', { data: { content: '   ' } })
+test.describe('POST /api/ingest (signed in)', () => {
+  // page.request shares the browser context's cookies, so it carries the admin session.
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdmin(page)
+    await expect(page).toHaveURL(/\/admin$/)
+  })
+
+  test('rejects empty content without touching the database', async ({ page }) => {
+    const res = await page.request.post('/api/ingest', { data: { content: '   ' } })
     expect(res.status()).toBe(400)
     expect(await res.json()).toEqual({ error: 'content must be a non-empty string' })
   })
 
   // LIVE + WRITES TO THE REMOTE DATABASE (inserts a nods_page_section row).
-  test('LIVE: ingests a chunk through the Edge Function', async ({ request }) => {
+  test('LIVE: ingests a chunk through the Edge Function', async ({ page }) => {
     test.skip(
       process.env.E2E_ALLOW_INGEST !== '1',
       'writes to the remote DB; set E2E_ALLOW_INGEST=1 to run'
     )
     test.setTimeout(90_000)
 
-    const res = await request.post('/api/ingest', {
+    const res = await page.request.post('/api/ingest', {
       data: { content: `E2E ingest check ${new Date().toISOString()}: Suzu test knowledge chunk.` },
       timeout: 80_000,
     })

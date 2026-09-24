@@ -1,4 +1,5 @@
-import type { Route } from '@playwright/test'
+import type { Page, Route } from '@playwright/test'
+import { E2E_ADMIN_PASSWORD } from './test-env'
 
 /** Fulfil a request with a minimal AI SDK UI message stream (SSE) containing `text`. */
 export async function fulfillWithUIMessageStream(route: Route, text: string) {
@@ -42,4 +43,11 @@ export function parseUIMessageStream(body: string) {
     .split('\n')
     .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
     .map((line) => JSON.parse(line.slice('data: '.length)) as { type: string; [k: string]: unknown })
+}
+
+/** Sign in through the real /admin/login form. Cookies land in the page's browser context. */
+export async function loginAsAdmin(page: Page, password: string = E2E_ADMIN_PASSWORD) {
+  await page.goto('/admin/login')
+  await page.getByLabel('Password').fill(password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
 }

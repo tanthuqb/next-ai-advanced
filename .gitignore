@@ -62,3 +62,6 @@ supabase/functions/.env.secrets
 
 # TypeScript
 *.tsbuildinfo
+
+# Vercel CLI link metadata
+.vercel

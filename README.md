@@ -1,6 +1,22 @@
-# next-ai-advanced
+# Suzu AI (next-ai-advanced)
 
 **Suzu AI** — a RAG-powered (Retrieval-Augmented Generation) career advisor chatbot built with Next.js, Supabase (Postgres + pgvector), and Google Gemini, ready to deploy on Supabase Cloud and Vercel.
+
+**Live demo:** [https://next-ai-advanced.vercel.app](https://next-ai-advanced.vercel.app)
+
+## Screenshots
+
+| Landing | Chat (streaming answer with RAG context) | Admin sign-in |
+|---------|-------------------------------------------|---------------|
+| ![Landing](./screenshots/landing.png) | ![Chat](./screenshots/chat.png) | ![Admin sign-in](./screenshots/admin-login.png) |
+
+## Highlights
+
+- Retrieval-Augmented Generation over a Supabase `pgvector` store, with query embeddings produced by a Supabase Edge Function.
+- Streaming chat UI built on the AI SDK v7 (`ai`, `@ai-sdk/react`, `@ai-sdk/google`) with automatic model fallback on quota or overload errors.
+- Password-protected admin area for feeding knowledge to the bot, with signed httpOnly session cookies and a shared secret between the app and the Edge Function.
+- Per-IP rate limiting and message size caps on the chat API.
+- Playwright end-to-end tests (including live Gemini calls), Node unit tests and Deno tests for the Edge Function.
 
 ## 1. Overview
 
